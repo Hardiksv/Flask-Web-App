@@ -15,9 +15,10 @@ class User(db.Model, UserMixin):
     email = db.Column(db.String(120), unique=True, nullable=False)
     image_file = db.Column(db.String(20), nullable=False, default='default.jpg')
     password = db.Column(db.String(60), nullable=False)
-    posts = db.relationship('Post', backref='author', lazy=True)
+    posts = db.relationship('Post', backref='author', lazy=True) #ek user multiple post likh skta hai ,"Lazy" matlb data tabhi load hota hai jab access kiya jata hai.
 
     def get_reset_token(self, expires_sec=1800):
+        s = Serializer(app.config['SECRET_KEY'], expires_sec) #Serializer() → Secret key se token generate hota hai
         s = Serializer(app.config['SECRET_KEY'], expires_sec)
         return s.dumps({'user_id': self.id}).decode('utf-8')
 
@@ -30,7 +31,7 @@ class User(db.Model, UserMixin):
             return None
         return User.query.get(user_id)
 
-    def __repr__(self):
+    def __repr__(self): #__repr__ → Debugging ke liye hota hai
         return f"User('{self.username}', '{self.email}', '{self.image_file}')"
 
 class BlockedUser(db.Model):
@@ -41,7 +42,7 @@ class BlockedUser(db.Model):
     date_blocked = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
     blocker = db.relationship('User', foreign_keys=[blocker_id], backref='blocked_users')
-    blocked = db.relationship('User', foreign_keys=[blocked_id])
+    blocked = db.relationship('User', foreign_keys=[blocked_id])  
 
     def __repr__(self):
         return f"BlockedUser('{self.blocker_id}', '{self.blocked_id}')"
