@@ -5,17 +5,28 @@ from flask import render_template, url_for, flash, redirect, request, abort
 from flaskblog import app, db, bcrypt, mail
 from flaskblog.forms import (RegistrationForm, LoginForm, UpdateAccountForm,
                              PostForm, RequestResetForm, ResetPasswordForm)
-from flaskblog.models import User, Post
+from flaskblog.models import User, Post ,BlockedUser
 from flask_login import login_user, current_user, logout_user, login_required
 from flask_mail import Message
 
 
 @app.route("/")
 @app.route("/home")
+@login_required
 def home():
     page = request.args.get('page', 1, type=int)
-    posts = Post.query.order_by(Post.date_posted.desc()).paginate(page=page, per_page=5)
+    
+    # Blocked user IDs nikal rahe hain
+    blocked_ids = [block.blocked_id for block in BlockedUser.query.filter_by(blocker_id=current_user.id).all()]
+    
+    # Sabhi posts la rahe hain lekin blocked users ko exclude kar rahe hain
+    posts = Post.query.join(User)\
+        .filter(~User.id.in_(blocked_ids))\
+        .order_by(Post.date_posted.desc())\
+        .paginate(page=page, per_page=5)
+
     return render_template('home.html', posts=posts)
+
 
 
 @app.route("/about")
@@ -148,6 +159,7 @@ def delete_post(post_id):
 
 
 @app.route("/user/<string:username>")
+@login_required
 def user_posts(username):
     page = request.args.get('page', 1, type=int)
     user = User.query.filter_by(username=username).first_or_404()
@@ -199,3 +211,69 @@ def reset_token(token):
         flash('Your password has been updated! You are now able to log in', 'success')
         return redirect(url_for('login'))
     return render_template('reset_token.html', title='Reset Password', form=form)
+
+
+@app.route('/block/<int:user_id>', methods=['POST','GET'])
+@login_required
+def block_user(user_id):
+    user = User.query.get_or_404(user_id)
+    if user == current_user:
+        flash('You cannot block yourself.', 'warning')
+        return redirect(url_for('home'))
+    
+    blocked = BlockedUser.query.filter_by(blocker_id=current_user.id, blocked_id=user.id).first()
+    if blocked:
+        flash(f'You have already blocked {user.username}.', 'info')
+    else:
+        new_block = BlockedUser(blocker_id=current_user.id, blocked_id=user.id)
+        db.session.add(new_block)
+        db.session.commit()
+        flash(f'You have blocked {user.username}.', 'success')
+    
+    return redirect(url_for('filtered_feed'))
+
+@app.route('/blocked_users')
+@login_required
+def view_blocked_users():
+    """Blocked users list"""
+    blocked_users = BlockedUser.query.filter_by(blocker_id=current_user.id).all()
+    
+    blocked_details = []
+    for blocked in blocked_users:
+        user = User.query.get(blocked.blocked_id)
+        if user:
+            blocked_details.append(user)
+    
+    return render_template('blocked_users.html', blocked_users=blocked_details)
+
+
+@app.route('/unblock/<int:user_id>', methods=['POST'])
+@login_required
+def unblock_user(user_id):
+    """Unblock a blocked user"""
+    blocked = BlockedUser.query.filter_by(blocker_id=current_user.id, blocked_id=user_id).first()
+    
+    if blocked:
+        db.session.delete(blocked)
+        db.session.commit()
+        flash('User unblocked successfully.', 'success')
+    else:
+        flash('User not found in your block list.', 'danger')
+    
+    return redirect(url_for('view_blocked_users'))
+
+
+
+@app.route('/filtered_feed')
+@login_required
+def filtered_feed():
+    page = request.args.get('page', 1, type=int)
+    blocked_ids = [block.blocked_id for block in BlockedUser.query.filter_by(blocker_id=current_user.id).all()]
+
+    posts = Post.query.join(User)\
+        .filter(~User.id.in_(blocked_ids))\
+        .order_by(Post.date_posted.desc())\
+        .paginate(page=page, per_page=5)
+
+    return render_template('home.html', posts=posts, blocked_ids=blocked_ids)
+

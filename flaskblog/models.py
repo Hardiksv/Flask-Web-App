@@ -33,6 +33,18 @@ class User(db.Model, UserMixin):
     def __repr__(self):
         return f"User('{self.username}', '{self.email}', '{self.image_file}')"
 
+class BlockedUser(db.Model):
+    __tablename__='blocked_user'
+    id = db.Column(db.Integer, primary_key=True)
+    blocker_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    blocked_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    date_blocked = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    blocker = db.relationship('User', foreign_keys=[blocker_id], backref='blocked_users')
+    blocked = db.relationship('User', foreign_keys=[blocked_id])
+
+    def __repr__(self):
+        return f"BlockedUser('{self.blocker_id}', '{self.blocked_id}')"
 
 class Post(db.Model):
     id = db.Column(db.Integer, primary_key=True)
